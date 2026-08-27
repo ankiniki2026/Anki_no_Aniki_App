@@ -4,7 +4,7 @@
 ![Expo](https://img.shields.io/badge/Expo-54-black.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)
 
-**「暗記のアニキ」** は、単語学習や資格・検定試験の勉強など、あらゆる暗記作業を効率化・自動化するモバイルアプリケーションです。  
+**[「暗記のアニキ」](https://ankiniki2026.web.app/)** は、単語学習や資格・検定試験の勉強など、あらゆる暗記作業を効率化・自動化するモバイルアプリケーションです。  
 ユーザーの学習目標日に合わせた**自動復習スケジューリング**、**OCR（画像文字認識）による単語カード生成**、**オンライン共有機能**などを備えたオールインワン暗記学習ツールです。
 
 ---
@@ -91,3 +91,12 @@
 
 For research / academic use only.
 Not for commercial use.
+
+---
+
+## 🔗 関連リンク
+
+- [暗記のアニキ App Store](https://apps.apple.com/jp/app/%E6%9A%97%E8%A8%98%E3%81%AE%E3%82%A2%E3%83%8B%E3%82%AD/id6792623612)
+- [暗記のアニキ ホームページ](https://ankiniki2026.web.app/)
+- [暗記のアニキ 素材集](https://github.com/ankiniki2026/Aniki_no_Anki_Assets)
+
