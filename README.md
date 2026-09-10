@@ -98,5 +98,5 @@ Not for commercial use.
 
 - [暗記のアニキ App Store](https://apps.apple.com/jp/app/%E6%9A%97%E8%A8%98%E3%81%AE%E3%82%A2%E3%83%8B%E3%82%AD/id6792623612)
 - [暗記のアニキ ホームページ](https://ankiniki2026.web.app/)
-- [暗記のアニキ 素材集](https://github.com/ankiniki2026/Aniki_no_Anki_Assets)
+- [暗記のアニキ 素材集](https://github.com/ankiniki2026/Anki_no_Aniki_Assets)
 
