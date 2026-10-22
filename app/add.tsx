@@ -158,9 +158,6 @@ export default function AddCardScreen() {
       setFront('');
       setBack('');
       setMemo('');
-      setFrontAscii(false);
-      setBackAscii(false);
-      setMemoAscii(false);
       setFrontImage(undefined);
       setBackImage(undefined);
       setFrontImageFitMode('contain');

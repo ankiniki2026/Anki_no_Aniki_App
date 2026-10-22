@@ -2,7 +2,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import AntDesign from '@expo/vector-icons/AntDesign';
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import { triggerHaptic } from '../lib/haptic';
 import {
   Pressable,
@@ -35,6 +35,8 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { getDeviceUuid } from '../lib/deviceUuid';
+import { recordFolderShare } from '../lib/achievementsStore';
+import { saveMySharedFolderId } from '../lib/sharedFolderHelper';
 import {
   Card,
   createFolderList,
@@ -48,12 +50,11 @@ import {
   addFolder,
   addCard,
   generateUUID,
+  saveCardsData,
   updateFolderCardSettings,
   updateFolderSettings,
   deleteFolder,
   getSharedFolderData,
-  isMonitorFolderScheduledForToday,
-  isMonitorFolder,
 } from '../lib/cardsStore';
 import { boldWeight, shadow, useColors, TabBar } from '../lib/colors';
 import { useTheme } from '../lib/themeContext';
@@ -465,14 +466,41 @@ export default function CardsScreen() {
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [csvInputText, setCsvInputText] = useState('');
 
-  const handleImportCsvBatch = () => {
+  const handleImportCsvBatch = async () => {
     triggerHaptic();
     if (!csvInputText.trim()) return;
 
     const lines = csvInputText.split(/\r?\n/).filter(line => line.trim().length > 0);
     let addedCount = 0;
+    let createdFolderCount = 0;
+    let targetFolder = [...activeFolder];
 
     for (const line of lines) {
+      if (line.trim().startsWith('#')) {
+        let folderTitle = line.trim().replace(/^#+/, '').trim();
+        if (folderTitle.includes(',')) {
+          folderTitle = folderTitle.split(',')[0].trim();
+        }
+        folderTitle = folderTitle.replace(/^["']|["']$/g, '').trim();
+
+        const segments = folderTitle.split('/').map(s => s.trim()).filter(Boolean);
+        if (segments.length === 0) {
+          targetFolder = [...activeFolder];
+        } else {
+          let currentPath = [...activeFolder];
+          for (const segment of segments) {
+            const subFolders = findCurrentFoldersData(currentPath, getCardsData());
+            if (!subFolders.some(f => f.name === segment)) {
+              addFolder(currentPath, segment);
+              createdFolderCount++;
+            }
+            currentPath = [...currentPath, segment];
+          }
+          targetFolder = currentPath;
+        }
+        continue;
+      }
+
       const items: string[] = [];
       let current = '';
       let inQuotes = false;
@@ -505,17 +533,17 @@ export default function CardsScreen() {
           objRememberTime: 0,
           objStability: 133,
         };
-        if (addCard(activeFolder, newCard)) {
+        if (addCard(targetFolder, newCard)) {
           addedCount++;
         }
       }
     }
 
-    if (addedCount > 0) {
+    if (addedCount > 0 || createdFolderCount > 0) {
       setIsCsvModalOpen(false);
       setCsvInputText('');
-      loadCardsData();
-      setFoldersData(getCardsData());
+      await saveCardsData();
+      setFoldersData(JSON.parse(JSON.stringify(getCardsData())));
       const msg = t('csvImportSuccess').replace('{count}', String(addedCount));
       if (Platform.OS === 'web') {
         window.alert(msg);
@@ -532,7 +560,6 @@ export default function CardsScreen() {
   };
 
   const openFolderSettingsModal = (folderName: string) => {
-    if (folderName === 'モニター用単語') return; // モニター用単語フォルダの保護
     setFolderSettingsTarget(folderName);
     setEditFolderName(folderName);
     const targetPath = [...activeFolder, folderName];
@@ -551,7 +578,7 @@ export default function CardsScreen() {
   };
 
   const handleApplyFolderSettings = () => {
-    if (!folderSettingsTarget || folderSettingsTarget === 'モニター用単語') return;
+    if (!folderSettingsTarget) return;
     triggerHaptic();
     const days = parseInt(bulkRememberDays, 10) || 14;
     const stability = parseInt(bulkStability, 10) || 133;
@@ -574,7 +601,7 @@ export default function CardsScreen() {
   };
 
   const handleDeleteFolder = () => {
-    if (!folderSettingsTarget || folderSettingsTarget === 'モニター用単語') return;
+    if (!folderSettingsTarget) return;
     triggerHaptic();
 
     const confirmMsg = t('deleteFolderConfirm').replace('{name}', folderSettingsTarget);
@@ -611,7 +638,7 @@ export default function CardsScreen() {
   const [shareTargetFolder, setShareTargetFolder] = useState<string | null>(null);
 
   const handleShareFolderPress = async () => {
-    if (!folderSettingsTarget || folderSettingsTarget === 'モニター用単語') return;
+    if (!folderSettingsTarget) return;
     triggerHaptic();
     const targetFolder = folderSettingsTarget;
     setShareTargetFolder(targetFolder);
@@ -627,7 +654,7 @@ export default function CardsScreen() {
 
   const executeShareFolder = async () => {
     const targetFolder = shareTargetFolder || folderSettingsTarget;
-    if (!targetFolder || targetFolder === 'モニター用単語') return;
+    if (!targetFolder) return;
     triggerHaptic();
     const isBanned = await checkIsUserBanned();
     if (isBanned) {
@@ -657,6 +684,10 @@ export default function CardsScreen() {
         createdAt: new Date().toISOString(),
         folder: sharedFolderData,
       });
+
+      // 実績：フォルダ共有回数を記録
+      void recordFolderShare();
+      void saveMySharedFolderId(shareID);
 
       setIsSharing(false);
       setShareTargetFolder(null);
@@ -690,6 +721,10 @@ export default function CardsScreen() {
   const currentFoldersData = findCurrentFoldersData(activeFolder, foldersData);
   const folderList = createFolderList(currentFoldersData);
   const rawCardList = findCurrentCardsData(activeFolder, foldersData);
+  const hasUnsetGoalCards = useMemo(() => {
+    if (activeFolder.length === 0) return false;
+    return rawCardList.some(card => !card.T0 && (!card.objRememberTime || card.objRememberTime <= 0));
+  }, [activeFolder, rawCardList]);
 
   // ドラッグ＆ドロップ関連の状態とRefs
   const [activeDragIndex, setActiveDragIndex] = useState<number | null>(null);
@@ -1100,8 +1135,6 @@ export default function CardsScreen() {
 
     const infoText = `${totalCards}${t('cardsCount')} (${t('averageMemorization')}: ${avgPct}%)`;
 
-    const isMonitorFolder = name === 'モニター用単語';
-
     return (
       <>
         <View
@@ -1110,30 +1143,26 @@ export default function CardsScreen() {
             { flexDirection: 'row', alignItems: 'stretch', borderTopColor: getBorderColor(avgLevel) }
           ]}
         >
-          {!isMonitorFolder && (
-            <>
-              <Pressable
-                onPress={(e) => {
-                  triggerHaptic();
-                  openFolderSettingsModal(name);
-                }}
-                style={({ hovered, pressed }) => [
-                  { width: 36, justifyContent: 'center', alignItems: 'center', borderTopLeftRadius: 5, borderBottomLeftRadius: 5 },
-                  hovered && folderStyles.folderHover,
-                  pressed && folderStyles.folderPressed,
-                ]}
-              >
-                <Ionicons name="options-outline" size={18} color={colors.plainText} />
-              </Pressable>
+          <Pressable
+            onPress={(e) => {
+              triggerHaptic();
+              openFolderSettingsModal(name);
+            }}
+            style={({ hovered, pressed }) => [
+              { width: 36, justifyContent: 'center', alignItems: 'center', borderTopLeftRadius: 5, borderBottomLeftRadius: 5 },
+              hovered && folderStyles.folderHover,
+              pressed && folderStyles.folderPressed,
+            ]}
+          >
+            <Ionicons name="options-outline" size={18} color={colors.plainText} />
+          </Pressable>
 
-              <View style={{ width: 1, backgroundColor: colors.divider, marginVertical: 6 }} />
-            </>
-          )}
+          <View style={{ width: 1, backgroundColor: colors.divider, marginVertical: 6 }} />
 
           <Pressable
             onPress={() => handleFolderPress(name)}
             style={({ hovered, pressed }) => [
-              { flex: 1, borderTopLeftRadius: isMonitorFolder ? 5 : 0, borderBottomLeftRadius: isMonitorFolder ? 5 : 0, borderTopRightRadius: 5, borderBottomRightRadius: 5 },
+              { flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderTopRightRadius: 5, borderBottomRightRadius: 5 },
               hovered && folderStyles.folderHover,
               pressed && folderStyles.folderPressed,
             ]}
@@ -1656,7 +1685,7 @@ export default function CardsScreen() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <TabBar/>
 
-      <View style={{height: 48, backgroundColor: colors.element, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 50, ...shadow, zIndex: 10}}>
+      <View style={{height: 48, backgroundColor: colors.element, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingLeft: 55, paddingRight: 170, ...shadow, zIndex: 10}}>
         <View style={{position: "absolute", left: 15}}>
           <Image source={appIcon} style={{width: 30, height: 30, borderRadius: 5}} />
         </View>
@@ -1667,6 +1696,29 @@ export default function CardsScreen() {
         >
           {activeFolder.length === 0 ? t('cards') : activeFolder[activeFolder.length - 1]}
         </Text>
+
+        {/* カード選択ボタン */}
+        <Pressable 
+          onPress={() => {
+            triggerHaptic();
+            router.push({
+              pathname: '/batchSelect' as any,
+              params: {
+                folderPath: JSON.stringify(activeFolder),
+              },
+            });
+          }}
+          style={{position: "absolute", right: 130}}
+          accessibilityLabel={t('batchSelectCards')}
+        >
+          <View style={{width: 30, height: 30, justifyContent: 'center', alignItems: 'center'}}>
+            <Ionicons 
+              name="checkbox-outline" 
+              size={22} 
+              color={colors.plainText} 
+            />
+          </View>
+        </Pressable>
 
         {/* フィルターボタン */}
         <Pressable 
@@ -1797,6 +1849,42 @@ export default function CardsScreen() {
         )}
       </View>
       
+      {/* 目標未設定カードの注意書きバナー */}
+      {hasUnsetGoalCards && (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.elementHover,
+            paddingVertical: 10,
+            paddingHorizontal: 16,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.divider,
+            borderLeftWidth: 5,
+            borderLeftColor: '#FF9800',
+            zIndex: 9,
+          }}
+        >
+          <Ionicons
+            name="warning"
+            size={20}
+            color="#FF9800"
+            style={{ marginRight: 10, flexShrink: 0 }}
+          />
+          <Text
+            style={{
+              fontSize: 13,
+              lineHeight: 18,
+              color: colors.titleText,
+              fontWeight: boldWeight,
+              flex: 1,
+            }}
+          >
+            {t('unsetGoalCardsNotice')}
+          </Text>
+        </View>
+      )}
+
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         {/*hoveredCard && (
           <View style={cardStyles.debugTooltip} pointerEvents="none">
@@ -1891,7 +1979,7 @@ export default function CardsScreen() {
             return 'both';
           });
         }}
-        style={[buttonStyles.displayModeFab, activeFolder.includes('モニター用単語') && { bottom: 100 }]}
+        style={buttonStyles.displayModeFab}
       >
         <Ionicons 
           name={
@@ -1906,42 +1994,22 @@ export default function CardsScreen() {
         />
       </Pressable>
 
-      {(() => {
-        const isMonitor = activeFolder.includes('モニター用単語');
+      <Pressable
+        onPress={() => {
+          triggerHaptic();
+          router.push(`/testSettings?folderPath=${encodeURIComponent(JSON.stringify(activeFolder))}`);
+        }}
+        style={buttonStyles.playFab}
+      >
+        <Ionicons name="play" size={32} color="white" />
+      </Pressable>
 
-        return (
-          <Pressable
-            onPress={() => {
-              triggerHaptic();
-              if (isMonitor) {
-                const msg = t('monitorTestScheduleNotice');
-                if (Platform.OS === 'web') {
-                  window.alert(msg);
-                } else {
-                  Alert.alert(t('testHeader'), msg);
-                }
-                return;
-              }
-              router.push(`/testSettings?folderPath=${encodeURIComponent(JSON.stringify(activeFolder))}`);
-            }}
-            style={[
-              buttonStyles.playFab,
-              isMonitor && { bottom: 20, backgroundColor: '#8E8E93' }
-            ]}
-          >
-            <Ionicons name="play" size={32} color="white" />
-          </Pressable>
-        );
-      })()}
-
-      {!activeFolder.includes('モニター用単語') && (
-        <Pressable
-          onPress={() => handleAddCardPress()}
-          style={buttonStyles.fab}
-        >
-          <AntDesign name="plus" size={40} color="white" />
-        </Pressable>
-      )}
+      <Pressable
+        onPress={() => handleAddCardPress()}
+        style={buttonStyles.fab}
+      >
+        <AntDesign name="plus" size={40} color="white" />
+      </Pressable>
 
       {(isSortMenuOpen || isFilterMenuOpen) && (
         <Pressable 

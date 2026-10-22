@@ -14,9 +14,7 @@ import {
 import {
   getCardsData,
   getTestCardsForPath,
-  loadCardsData,
-  isMonitorFolder,
-  isMonitorFolderScheduledForToday
+  loadCardsData
 } from './lib/cardsStore';
 import { boldWeight, shadow, useColors, TabBar } from './lib/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -347,36 +345,21 @@ export default function TestSettingsScreen() {
               </Text>
             </View>
             
-            {(() => {
-              const isMonitor = isMonitorFolder(path);
-
-              return (
-                <Pressable
-                  style={[
-                    styles.startButton,
-                    (filteredTargetCards.length === 0 || isMonitor) && styles.startButtonDisabled,
-                    isMonitor && { backgroundColor: '#8E8E93' }
-                  ]}
-                  onPress={() => {
-                    triggerHaptic();
-                    if (isMonitor) {
-                      const msg = t('monitorTestScheduleNotice');
-                      if (Platform.OS === 'web') {
-                        window.alert(msg);
-                      } else {
-                        Alert.alert(t('testHeader'), msg);
-                      }
-                      return;
-                    }
-                    handleStartTest();
-                  }}
-                >
-                  <Text style={styles.startButtonText}>
-                    {filteredTargetCards.length === 0 ? t('noTargetCards') : t('startTest')}
-                  </Text>
-                </Pressable>
-              );
-            })()}
+            <Pressable
+              style={[
+                styles.startButton,
+                filteredTargetCards.length === 0 && styles.startButtonDisabled,
+              ]}
+              disabled={filteredTargetCards.length === 0}
+              onPress={() => {
+                triggerHaptic();
+                handleStartTest();
+              }}
+            >
+              <Text style={styles.startButtonText}>
+                {filteredTargetCards.length === 0 ? t('noTargetCards') : t('startTest')}
+              </Text>
+            </Pressable>
           </View>
         </ScrollView>
       </View>

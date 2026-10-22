@@ -15,12 +15,15 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { collection, getDocs, query } from 'firebase/firestore';
+import { collection, getDocs, query, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useColors, boldWeight, shadow, TabBar } from '../lib/colors';
 import { useLanguage } from '../lib/languageContext';
 import { triggerHaptic } from '../lib/haptic';
+import { getDeviceUuid } from '../lib/deviceUuid';
+import { getMySharedFolderIds, removeMySharedFolderId } from '../lib/sharedFolderHelper';
 import { importSharedFolder, SharedFolder, SharedCard, isRTL } from '../lib/cardsStore';
+import { recordFolderImport } from '../lib/achievementsStore';
 import { copyToClipboard } from '../lib/clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import * as ExpoSpeech from 'expo-speech';
@@ -189,6 +192,33 @@ export default function SharedFoldersScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [previewTarget, setPreviewTarget] = useState<SharedFolderDoc | null>(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [deviceUuid, setDeviceUuid] = useState<string>('');
+  const [mySharedIds, setMySharedIds] = useState<string[]>([]);
+
+  // 端末情報と自分が共有したフォルダID一覧の読み込み
+  const loadDeviceInfo = async () => {
+    try {
+      const [uuid, ids] = await Promise.all([
+        getDeviceUuid(),
+        getMySharedFolderIds(),
+      ]);
+      setDeviceUuid(uuid);
+      setMySharedIds(ids);
+    } catch (e) {
+      console.error('Failed to load device info:', e);
+    }
+  };
+
+  // 自分が共有したフォルダかどうかを判定
+  const isMySharedFolder = (item: SharedFolderDoc): boolean => {
+    if (deviceUuid && item.publisher && item.publisher === deviceUuid) {
+      return true;
+    }
+    if (mySharedIds.includes(item.id) || mySharedIds.includes(item.shareID)) {
+      return true;
+    }
+    return false;
+  };
 
   // フォルダ内のカード総数を再帰的にカウント
   const countCardsInFolder = (sf: SharedFolder): number => {
@@ -257,6 +287,7 @@ export default function SharedFoldersScreen() {
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
+      void loadDeviceInfo();
       fetchSharedFolders();
     }, [])
   );
@@ -264,13 +295,72 @@ export default function SharedFoldersScreen() {
   const onRefresh = () => {
     triggerHaptic();
     setRefreshing(true);
+    void loadDeviceInfo();
     fetchSharedFolders();
+  };
+
+  const handleDeleteSharedFolder = (docItem: SharedFolderDoc) => {
+    triggerHaptic();
+    const folderName = docItem.folder.name || '無題のフォルダ';
+    const confirmMessage = t('deleteSharedFolderConfirm').replace('{name}', folderName);
+
+    const executeDelete = async () => {
+      try {
+        setLoading(true);
+        const docRef = doc(db, 'sharedFolders', docItem.id);
+        await deleteDoc(docRef);
+
+        await removeMySharedFolderId(docItem.id);
+        await removeMySharedFolderId(docItem.shareID);
+
+        setSharedList((prev) => prev.filter((item) => item.id !== docItem.id));
+        setMySharedIds((prev) => prev.filter((id) => id !== docItem.id && id !== docItem.shareID));
+
+        if (previewTarget?.id === docItem.id) {
+          setPreviewTarget(null);
+        }
+
+        const successMsg = t('deleteSharedFolderSuccess');
+        if (Platform.OS === 'web') {
+          window.alert(successMsg);
+        } else {
+          Alert.alert(t('sharedFolders'), successMsg);
+        }
+      } catch (e) {
+        console.error('Failed to delete shared folder:', e);
+        const errMsg = t('deleteSharedFolderError');
+        if (Platform.OS === 'web') {
+          window.alert(errMsg);
+        } else {
+          Alert.alert(t('cards'), errMsg);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(confirmMessage)) {
+        void executeDelete();
+      }
+    } else {
+      Alert.alert(
+        t('deleteSharedFolder'),
+        confirmMessage,
+        [
+          { text: t('close'), style: 'cancel' },
+          { text: t('deleteSharedFolder'), style: 'destructive', onPress: () => void executeDelete() },
+        ]
+      );
+    }
   };
 
   const handleImport = (docItem: SharedFolderDoc) => {
     triggerHaptic();
     const res = importSharedFolder(docItem.folder);
     if (res.success) {
+      // 実績：フォルダ取り込み回数を記録
+      void recordFolderImport();
       const msg = t('importFolderSuccess').replace('{name}', res.importedName);
       if (Platform.OS === 'web') {
         window.alert(msg);
@@ -486,6 +576,7 @@ export default function SharedFoldersScreen() {
           sharedList.map((item) => {
             const cardCount = countCardsInFolder(item.folder);
             const infoText = `${cardCount}${t('cardsCount')}`;
+            const isMyFolder = isMySharedFolder(item);
 
             return (
               <React.Fragment key={item.id}>
@@ -495,10 +586,46 @@ export default function SharedFoldersScreen() {
                     { flexDirection: 'row', alignItems: 'stretch' },
                   ]}
                 >
+                  {/* 自分が共有したことを示すマーク（左側） */}
+                  {isMyFolder && (
+                    <View
+                      style={{
+                        paddingLeft: 10,
+                        paddingRight: 2,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <View
+                        style={{
+                          backgroundColor: colors.accentColor + '20',
+                          paddingHorizontal: 6,
+                          paddingVertical: 4,
+                          borderRadius: 6,
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: 2,
+                        }}
+                      >
+                        <Ionicons name="person" size={16} color={colors.accentColor} />
+                        <Text
+                          style={{
+                            fontSize: 9,
+                            fontWeight: boldWeight,
+                            color: colors.accentColor,
+                            textAlign: 'center',
+                          }}
+                        >
+                          {t('mySharedBadge')}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
                   {/* メインフォルダ情報 (タップで中身プレビュー表示) */}
                   <Pressable
                     style={({ hovered, pressed }) => [
-                      { flex: 1, borderTopLeftRadius: 5, borderBottomLeftRadius: 5, paddingBottom: 10 },
+                      { flex: 1, borderTopLeftRadius: isMyFolder ? 0 : 5, borderBottomLeftRadius: isMyFolder ? 0 : 5, paddingBottom: 10 },
                       hovered && folderStyles.folderHover,
                       pressed && folderStyles.folderPressed,
                     ]}
@@ -522,6 +649,31 @@ export default function SharedFoldersScreen() {
                     </View>
                   </Pressable>
 
+                  {/* 削除ボタン（自分が共有したフォルダのみ表示） */}
+                  {isMyFolder && (
+                    <>
+                      <View style={{ width: 1, backgroundColor: colors.divider, marginVertical: 6 }} />
+                      <Pressable
+                        onPress={() => handleDeleteSharedFolder(item)}
+                        style={({ hovered, pressed }) => [
+                          {
+                            width: 76,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: 4,
+                          },
+                          hovered && { backgroundColor: colors.dangerBackground },
+                          pressed && { opacity: 0.6 },
+                        ]}
+                      >
+                        <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                        <Text style={{ color: colors.danger, fontWeight: boldWeight, fontSize: 12 }}>
+                          {t('deleteSharedFolder')}
+                        </Text>
+                      </Pressable>
+                    </>
+                  )}
+
                   {/* 縦区切り線 */}
                   <View style={{ width: 1, backgroundColor: colors.divider, marginVertical: 6 }} />
 
@@ -530,7 +682,7 @@ export default function SharedFoldersScreen() {
                     onPress={() => handleImport(item)}
                     style={({ hovered, pressed }) => [
                       {
-                        width: 85,
+                        width: isMyFolder ? 76 : 85,
                         justifyContent: 'center',
                         alignItems: 'center',
                         borderTopRightRadius: 5,
@@ -584,9 +736,27 @@ export default function SharedFoldersScreen() {
             {previewTarget && (
               <>
                 <View style={{ marginBottom: 8 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                     <Ionicons name="folder-open" size={24} color={colors.accentColor} />
                     <Text style={styles.modalTitle}>{previewTarget.folder.name}</Text>
+                    {isMySharedFolder(previewTarget) && (
+                      <View
+                        style={{
+                          backgroundColor: colors.accentColor + '20',
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                          borderRadius: 10,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <Ionicons name="person" size={12} color={colors.accentColor} />
+                        <Text style={{ fontSize: 11, fontWeight: boldWeight, color: colors.accentColor }}>
+                          {t('mySharedBadge')}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 2, flexWrap: 'wrap' }}>
                     <Text style={{ fontSize: 12, color: colors.plainText, opacity: 0.8 }} selectable={true}>
@@ -637,25 +807,52 @@ export default function SharedFoldersScreen() {
                 </ScrollView>
 
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 15, alignItems: 'center' }}>
-                  <Pressable
-                    style={({ hovered, pressed }: any) => [
-                      {
-                        width: 44,
-                        height: 44,
-                        backgroundColor: colors.dangerBackground,
-                        borderColor: colors.dangerBorder,
-                        borderWidth: 1,
-                        borderRadius: 8,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      },
-                      hovered && { opacity: 0.8 },
-                      pressed && { opacity: 0.6 },
-                    ]}
-                    onPress={handleOpenReportModal}
-                  >
-                    <Ionicons name="flag-outline" size={18} color={colors.danger} />
-                  </Pressable>
+                  {isMySharedFolder(previewTarget) ? (
+                    <Pressable
+                      style={({ hovered, pressed }: any) => [
+                        {
+                          paddingHorizontal: 12,
+                          height: 44,
+                          backgroundColor: colors.dangerBackground,
+                          borderColor: colors.dangerBorder,
+                          borderWidth: 1,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexDirection: 'row',
+                          gap: 4,
+                        },
+                        hovered && { opacity: 0.8 },
+                        pressed && { opacity: 0.6 },
+                      ]}
+                      onPress={() => previewTarget && handleDeleteSharedFolder(previewTarget)}
+                    >
+                      <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                      <Text style={{ color: colors.danger, fontWeight: boldWeight, fontSize: 13 }}>
+                        {t('deleteSharedFolder')}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      style={({ hovered, pressed }: any) => [
+                        {
+                          width: 44,
+                          height: 44,
+                          backgroundColor: colors.dangerBackground,
+                          borderColor: colors.dangerBorder,
+                          borderWidth: 1,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        },
+                        hovered && { opacity: 0.8 },
+                        pressed && { opacity: 0.6 },
+                      ]}
+                      onPress={handleOpenReportModal}
+                    >
+                      <Ionicons name="flag-outline" size={18} color={colors.danger} />
+                    </Pressable>
+                  )}
 
                   <Pressable
                     style={{

@@ -21,9 +21,7 @@ import {
   createFolderList,
   findCurrentFoldersData,
   Folder,
-  getCardsData,
-  isMonitorFolder,
-  isMonitorFolderScheduledForToday
+  getCardsData
 } from './lib/cardsStore';
 import { boldWeight, shadow, useColors } from './lib/colors';
 import { TabBar } from './lib/colors';
@@ -215,33 +213,15 @@ export default function SelectFolderScreen() {
         </Animated.View>
       </View>
 
-      {(() => {
-        const isMonitor = isMonitorFolder(activeFolder);
-
-        return (
-          <Pressable
-            style={[
-              styles.confirmButton,
-              isMonitor && { backgroundColor: '#8E8E93' }
-            ]}
-            onPress={() => {
-              triggerHaptic();
-              if (isMonitor) {
-                const msg = t('monitorTestScheduleNotice');
-                if (Platform.OS === 'web') {
-                  window.alert(msg);
-                } else {
-                  Alert.alert(t('testHeader'), msg);
-                }
-                return;
-              }
-              handleConfirm();
-            }}
-          >
-            <Text style={styles.confirmButtonText}>{t('startTestWithFolder')}</Text>
-          </Pressable>
-        );
-      })()}
+      <Pressable
+        style={styles.confirmButton}
+        onPress={() => {
+          triggerHaptic();
+          handleConfirm();
+        }}
+      >
+        <Text style={styles.confirmButtonText}>{t('startTestWithFolder')}</Text>
+      </Pressable>
     </View>
     </>
   );

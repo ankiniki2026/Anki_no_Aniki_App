@@ -48,6 +48,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="edit"
+        options={{
+          title: t('editCard'),
+          href: null,
+        }}
+      />
+      <Tabs.Screen
         name="calendar"
         options={{
           title: t('calendarTab'),

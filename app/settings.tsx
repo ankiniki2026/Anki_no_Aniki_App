@@ -391,6 +391,21 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.settingContainer}>
+          <Text style={styles.label}>{t('achievements')}</Text>
+          <Pressable 
+            style={styles.contactButton}
+            onPress={() => {
+              triggerHaptic();
+              router.push('/achievements');
+            }}
+          >
+            <Ionicons name="trophy-outline" size={20} color="#FFB300" style={{ marginRight: 6 }} />
+            <Text style={styles.contactButtonText}>{t('viewAchievements')}</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.plainText} style={{ marginLeft: 6 }} />
+          </Pressable>
+        </View>
+
+        <View style={styles.settingContainer}>
           <Text style={styles.label}>{t('notifications')}</Text>
           {isWebNotificationUnsupported ? (
             <Pressable onPress={showWebNotificationUnsupportedMessage}>

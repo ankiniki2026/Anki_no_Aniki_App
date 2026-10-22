@@ -89,13 +89,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     route: '/shared',
     badge: '「共有」タブへ移動',
   },
-  {
-    stepNumber: 12,
-    title: 'モニター用単語について',
-    text: 'モニター用単語は、課題研究で開発した復習日提案アルゴリズムの評価のために、皆様に学習をお願いしている単語です。2週間だけですので、ご協力いただければ幸いです。',
-    route: '/cards',
-    badge: '「カード」タブへ移動',
-  },
 ];
 
 type TutorialContextType = {

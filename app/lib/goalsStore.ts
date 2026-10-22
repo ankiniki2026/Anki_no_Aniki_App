@@ -17,31 +17,17 @@ export async function getGoals(): Promise<UserGoal[]> {
   try {
     const json = await AsyncStorage.getItem(GOALS_STORAGE_KEY);
     if (!json) {
-      // 初回起動時のデフォルト目標
-      const defaultGoalDate = new Date();
-      defaultGoalDate.setDate(defaultGoalDate.getDate() + 14);
-      const yyyy = defaultGoalDate.getFullYear();
-      const mm = String(defaultGoalDate.getMonth() + 1).padStart(2, '0');
-      const dd = String(defaultGoalDate.getDate()).padStart(2, '0');
-      const defaultTargetDateStr = `${yyyy}-${mm}-${dd}`;
-
-      const defaultGoals: UserGoal[] = [
-        {
-          id: 'default_monitor_goal',
-          folderPath: ['モニター用単語'],
-          folderName: 'モニター用単語',
-          targetDate: defaultTargetDateStr,
-          objRememberTime: 14,
-          objStability: 133,
-          createdAt: new Date().toISOString(),
-        },
-      ];
-
-      await AsyncStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(defaultGoals));
-      updateFolderCardSettings(['モニター用単語'], 14, 133);
-      return defaultGoals;
+      return [];
     }
-    return JSON.parse(json) as UserGoal[];
+    const goals = JSON.parse(json) as UserGoal[];
+    // モニター用単語の目標が保存されていたらクリーンアップ
+    const cleanedGoals = goals.filter(
+      g => g.folderName !== 'モニター用単語' && !g.folderPath.includes('モニター用単語') && g.id !== 'default_monitor_goal'
+    );
+    if (cleanedGoals.length !== goals.length) {
+      await AsyncStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(cleanedGoals));
+    }
+    return cleanedGoals;
   } catch (e) {
     console.error('Failed to load goals:', e);
     return [];
@@ -95,10 +81,6 @@ export async function saveGoal(input: {
 export async function deleteGoal(id: string): Promise<UserGoal[]> {
   try {
     const currentGoals = await getGoals();
-    const target = currentGoals.find(g => g.id === id);
-    if (target && (target.folderName === 'モニター用単語' || target.folderPath.includes('モニター用単語') || target.id === 'default_monitor_goal')) {
-      return currentGoals;
-    }
     const updatedList = currentGoals.filter(g => g.id !== id);
     await AsyncStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(updatedList));
     return updatedList;
@@ -110,37 +92,8 @@ export async function deleteGoal(id: string): Promise<UserGoal[]> {
 
 export async function resetGoalsData(): Promise<UserGoal[]> {
   try {
-    const currentGoals = await getGoals();
-    const monitorGoals = currentGoals.filter(
-      g => g.folderName === 'モニター用単語' || g.folderPath.includes('モニター用単語') || g.id === 'default_monitor_goal'
-    );
-
-    let resetGoals: UserGoal[];
-    if (monitorGoals.length > 0) {
-      resetGoals = monitorGoals;
-    } else {
-      const defaultGoalDate = new Date();
-      defaultGoalDate.setDate(defaultGoalDate.getDate() + 14);
-      const yyyy = defaultGoalDate.getFullYear();
-      const mm = String(defaultGoalDate.getMonth() + 1).padStart(2, '0');
-      const dd = String(defaultGoalDate.getDate()).padStart(2, '0');
-      const defaultTargetDateStr = `${yyyy}-${mm}-${dd}`;
-
-      resetGoals = [
-        {
-          id: 'default_monitor_goal',
-          folderPath: ['モニター用単語'],
-          folderName: 'モニター用単語',
-          targetDate: defaultTargetDateStr,
-          objRememberTime: 14,
-          objStability: 133,
-          createdAt: new Date().toISOString(),
-        },
-      ];
-    }
-
-    await AsyncStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(resetGoals));
-    return resetGoals;
+    await AsyncStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify([]));
+    return [];
   } catch (e) {
     console.error('Failed to reset goals:', e);
     return [];

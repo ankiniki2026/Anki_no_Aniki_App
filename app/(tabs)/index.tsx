@@ -18,8 +18,8 @@ import {
   isRTL,
   getCardScheduledTests,
   hasReviewTarget,
-  isMonitorFolder,
   getTodayDateStr,
+  isCardStudiedOnDate,
 } from '../lib/cardsStore';
 import { UserGoal, getGoals, saveGoal, deleteGoal } from '../lib/goalsStore';
 import { triggerHaptic } from '../lib/haptic';
@@ -37,7 +37,6 @@ type FolderOption = {
 const getAllFolderOptions = (folders: Folder[], currentPath: string[] = []): FolderOption[] => {
   let list: FolderOption[] = [];
   for (const folder of folders) {
-    if (folder.name === 'モニター用単語') continue;
     const path = [...currentPath, folder.name];
     list.push({ name: path.join(' / '), path });
     if (folder.folders && folder.folders.length > 0) {
@@ -452,6 +451,10 @@ export default function HomeScreen() {
     for (const card of cards) {
       const scheduledItems = getCardScheduledTests(card, 3); // t_i, t_{i+1}, t_{i+2}
       for (const item of scheduledItems) {
+        // すでに該当日に復習済みのカードは予定一覧に含めない
+        if (isCardStudiedOnDate(card, item.dateKey)) {
+          continue;
+        }
         if (!groups[item.dateKey]) {
           groups[item.dateKey] = [];
         }
@@ -940,39 +943,18 @@ export default function HomeScreen() {
             })}
           </ScrollView>
 
-          {(() => {
-            const isMonitorModalFolder = selectedFolderInfo && (
-              isMonitorFolder(selectedFolderInfo.folderName) ||
-              isMonitorFolder(selectedFolderInfo.folderPath)
-            );
-            const isValidModalDate = Boolean(selectedFolderInfo?.dateStr && selectedFolderInfo.dateStr <= getTodayDateStr());
-            const isMonitorModalDisabled = Boolean(isMonitorModalFolder && !isValidModalDate);
-
-            return (
-              <Pressable
-                onPress={() => {
-                  triggerHaptic();
-                  if (isMonitorModalDisabled) {
-                    const msg = t('notTodayReviewSchedule');
-                    if (Platform.OS === 'web') {
-                      window.alert(msg);
-                    } else {
-                      Alert.alert('', msg);
-                    }
-                    return;
-                  }
-                  handleStartReviewTest();
-                }}
-                style={({ pressed }) => [
-                  styles.playFab,
-                  isMonitorModalDisabled && { backgroundColor: '#8E8E93' },
-                  pressed && { opacity: 0.8 }
-                ]}
-              >
-                <Ionicons name="play" size={32} color="white" />
-              </Pressable>
-            );
-          })()}
+          <Pressable
+            onPress={() => {
+              triggerHaptic();
+              handleStartReviewTest();
+            }}
+            style={({ pressed }) => [
+              styles.playFab,
+              pressed && { opacity: 0.8 }
+            ]}
+          >
+            <Ionicons name="play" size={32} color="white" />
+          </Pressable>
         </View>
       </Modal>
 
@@ -1080,8 +1062,6 @@ export default function HomeScreen() {
             remDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
           }
 
-          const isMonitorGoal = goal.folderName === 'モニター用単語' || goal.folderPath?.includes('モニター用単語') || goal.id === 'default_monitor_goal';
-
           return (
             <View
               key={goal.id}
@@ -1101,15 +1081,13 @@ export default function HomeScreen() {
                     {goal.folderName}
                   </Text>
                 </View>
-                {!isMonitorGoal && (
-                  <Pressable
-                    onPress={() => handleDeleteGoal(goal.id)}
-                    hitSlop={8}
-                    style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1, padding: 4 }]}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#FF3B30" />
-                  </Pressable>
-                )}
+                <Pressable
+                  onPress={() => handleDeleteGoal(goal.id)}
+                  hitSlop={8}
+                  style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1, padding: 4 }]}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#FF3B30" />
+                </Pressable>
               </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, flexWrap: 'wrap', gap: 10 }}>

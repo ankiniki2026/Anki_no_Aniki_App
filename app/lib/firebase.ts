@@ -2,13 +2,14 @@
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "",
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "",
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || ""
+  apiKey: "AIzaSyAWJeS4wpsVEZp9OS5yxb7tf_BpURNKhRw",
+  authDomain: "wordapp-1.firebaseapp.com",
+  projectId: "wordapp-1",
+  storageBucket: "wordapp-1.firebasestorage.app",
+  messagingSenderId: "147501756963",
+  appId: "1:147501756963:web:f6200254351144b7bf7796"
 };
 
 // Initialize Firebase

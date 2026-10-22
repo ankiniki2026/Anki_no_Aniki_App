@@ -24,20 +24,17 @@ import {
   isRTL,
   isSameDay,
   isCardStudiedOnDate,
+  CardImageFitMode,
 } from './lib/cardsStore';
 import { boldWeight, shadow, useColors } from './lib/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from './lib/languageContext';
 import { scheduleStudyNotificationBatch } from './lib/notificationScheduler';
 import { resolveImageUri } from './lib/cardImageHelper';
-
-import { doc, setDoc } from "firebase/firestore";
-import { db } from "./lib/firebase";
-import { getDeviceUuid } from "./lib/deviceUuid";
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { triggerHaptic } from './lib/haptic';
 import * as ExpoSpeech from 'expo-speech';
 import { franc } from 'franc';
+import { recordRemembered, recordNotRemembered } from './lib/achievementsStore';
 
 const { width } = Dimensions.get('window');
 
@@ -95,13 +92,78 @@ function CLEAR(isCorrect: boolean, temp: number){
   return isCorrect && temp >= CLEAR_THRESHOLD;
 }
 
+const CardImage = ({
+  uri,
+  fitMode,
+  colors,
+  defaultHeight = 180,
+}: {
+  uri: string;
+  fitMode?: CardImageFitMode;
+  colors: any;
+  defaultHeight?: number;
+}) => {
+  const [aspectRatio, setAspectRatio] = useState<number | undefined>(undefined);
+  const resolvedUri = resolveImageUri(uri);
+
+  useEffect(() => {
+    if (resolvedUri) {
+      Image.getSize(
+        resolvedUri,
+        (w, h) => {
+          if (w > 0 && h > 0) {
+            setAspectRatio(w / h);
+          }
+        },
+        () => {}
+      );
+    }
+  }, [resolvedUri]);
+
+  if (!resolvedUri) return null;
+
+  if (fitMode === 'fullWidth') {
+    return (
+      <Image
+        source={{ uri: resolvedUri }}
+        style={{
+          width: '100%',
+          aspectRatio: aspectRatio || 16 / 9,
+          borderRadius: 8,
+          marginTop: 10,
+          resizeMode: 'contain',
+          borderWidth: 1,
+          borderColor: colors.divider,
+          backgroundColor: colors.background,
+        }}
+      />
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: resolvedUri }}
+      style={{
+        maxHeight: 300,
+        width: '100%',
+        height: defaultHeight,
+        borderRadius: 8,
+        marginTop: 10,
+        resizeMode: 'contain',
+        borderWidth: 1,
+        borderColor: colors.divider,
+        backgroundColor: colors.background,
+      }}
+    />
+  );
+};
+
 export default function TestScreen() {
   const router = useRouter();
   const colors = useColors();
   const { t } = useLanguage();
   const { folderPath, limit, includeSubfolders, date, memorizationFilter } = useLocalSearchParams<{ folderPath: string, limit?: string, includeSubfolders?: string, date?: string, memorizationFilter?: string }>();
   
-  const [sending, setSending] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   
   const path = useMemo(() => {
@@ -173,10 +235,6 @@ export default function TestScreen() {
     }
   }, [currentIndex, isFinished]);
 
-  const hasMonitorCards = useMemo(() => {
-    return cards.some((c) => c.originalFolderPath.includes('モニター用単語'));
-  }, [cards]);
-
   const handleSpeech = (text: string) => {
     triggerHaptic();
     if (isSpeaking) {
@@ -200,83 +258,6 @@ export default function TestScreen() {
       onError: () => setIsSpeaking(false),
     };
     ExpoSpeech.speak(text, options);
-  };
-
-  const handleSendData = async () => {
-    // モニター用単語フォルダ以外のテスト結果は Firebase に送信しない
-    if (!hasMonitorCards) {
-      return;
-    }
-
-    setSending(true);
-    try {
-      const deviceUuid = await getDeviceUuid();
-
-      // 年齢情報と同意の記録があればユーザーのドキュメントに保存する
-      const storedAge = await AsyncStorage.getItem('user_age');
-      if (storedAge) {
-        await setDoc(doc(db, "users", deviceUuid), {
-          age: parseInt(storedAge, 10),
-          consentedAt: new Date().toISOString()
-        }, { merge: true });
-      }
-
-      // セッション内のモニター用単語カードのみ最新データを取得して送信
-      const updatedCards = cards
-        .filter((c) => c.originalFolderPath.includes('モニター用単語'))
-        .map((c) => getCard(c.originalFolderPath, c.originalIndex))
-        .filter((c): c is Card => c !== undefined);
-
-      for (const card of updatedCards) {
-        const contentRef = doc(db, "users", deviceUuid, "cards", `card_${card.uuid}`);
-        await setDoc(
-          contentRef,
-          {
-            front: card.front,
-            back: card.back,
-            T0: card.T0 ?? card.createdAt,
-            initialReviewCompleted: card.initialReviewCompleted ?? false,
-            objRememberTime: card.objRememberTime ?? null,
-            objStability: card.objStability ?? null,
-            C1: card.C1,
-            C2: card.C2,
-          },
-          { merge: true }
-        );
-
-        // historyサブコレクション内に各履歴を格納
-        if (card.testHistory && card.testHistory.length > 0) {
-          for (let index = 0; index < card.testHistory.length; index++) {
-            const result = card.testHistory[index];
-            const historyRef = doc(
-              db,
-              "users",
-              deviceUuid,
-              "cards",
-              `card_${card.uuid}`,
-              "history",
-              `test_${index}`
-            );
-            await setDoc(
-              historyRef,
-              {
-                timestamp: result.timestamp,
-                isCorrect: result.isCorrect,
-                timeTaken: result.timeTaken,
-                isStudied: result.isStudied ?? false,
-              },
-              { merge: true }
-            );
-          }
-        }
-      }
-      console.log("Firestore送信成功");
-    } catch (error: any) {
-      console.log("送信エラーコード:", error.code);
-      console.error("送信エラー:", error.message);
-    } finally {
-      setSending(false);
-    }
   };
 
   const refreshStudyNotifications = async () => {
@@ -344,6 +325,11 @@ export default function TestScreen() {
 
   const handleAnswer = (isCorrect: boolean) => {
     triggerHaptic();
+    if (isCorrect) {
+      void recordRemembered();
+    } else {
+      void recordNotRemembered();
+    }
     // 回答時間は「答えを表示」を押した時点まで
     const timeTaken = answerTime ?? (Date.now() - startTime) / 1000;
     const now = new Date();
@@ -396,7 +382,6 @@ export default function TestScreen() {
         setShowBack(false);
       } else {
         setIsFinished(true);
-        handleSendData();
         void refreshStudyNotifications();
       }
     };
@@ -412,8 +397,7 @@ export default function TestScreen() {
       };
 
       let i = history.length + 1;
-      // モニター用単語はT0、通常カードはcreatedAtを計算基準にする
-      let dateCreated = new Date(currentCard.card.T0 ?? currentCard.card.createdAt);
+      let dateCreated = new Date(currentCard.card.createdAt);
       let objRememberTime = currentCard.card.objRememberTime ?? 14;
       let objStability = currentCard.card.objStability ?? 133;
 
@@ -490,9 +474,7 @@ export default function TestScreen() {
 
       const updatedCard: Card = {
         ...updatedCardForSchedule,
-        nextTestTime: shouldKeepReviewDate
-          ? currentCard.card.nextTestTime
-          : (nextSchedule?.timestamp ?? Number.NaN),
+        nextTestTime: nextSchedule?.timestamp ?? Number.NaN,
       };
 
       updateCard(currentCard.originalFolderPath, currentCard.originalIndex, updatedCard);
@@ -523,7 +505,7 @@ export default function TestScreen() {
     const updatedCardBase: Card = {
       ...currentCard.card,
       initialReviewCompleted: isInitialReviewDate
-        ? currentCard.card.initialReviewCompleted === true || isCleared
+        ? true
         : currentCard.card.initialReviewCompleted,
       // T0日および同日2回目以降は暗記度を更新しない。
       // 再テストでは、その日の復習完了状態だけを更新する。
@@ -531,7 +513,7 @@ export default function TestScreen() {
       testHistory: updatedHistory,
     };
 
-    const shouldAdvanceSchedule = (isDailyReview || isInitialReviewDate) && isCleared;
+    const shouldAdvanceSchedule = isDailyReview || isInitialReviewDate;
     const nextSchedule = shouldAdvanceSchedule
       ? getCardScheduledTests(
         { ...updatedCardBase, nextTestTime: undefined },
@@ -877,27 +859,6 @@ export default function TestScreen() {
             </View>
           </View>
 
-          {hasMonitorCards && (
-            <View style={{
-              backgroundColor: sending ? '#FFF8E1' : '#E8F5E9',
-              padding: 12,
-              borderRadius: 12,
-              marginBottom: 20,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8
-            }}>
-              <Ionicons 
-                name={sending ? "sync-outline" : "cloud-done-outline"} 
-                size={20} 
-                color={sending ? '#F57F17' : '#2E7D32'} 
-              />
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: sending ? '#F57F17' : '#2E7D32' }}>
-                {sending ? t('syncingFirebase') : t('syncedFirebase')}
-              </Text>
-            </View>
-          )}
-
           <Text style={styles.resultListTitle}>Card Breakdown</Text>
           {sessionResults.map((result, index) => {
             const cardData = cards[index]?.card;
@@ -1054,10 +1015,11 @@ export default function TestScreen() {
                     {currentCard.card.front}
                   </Text>
 
-                  {currentCard.card.frontImage && (
-                    <Image 
-                      source={{ uri: resolveImageUri(currentCard.card.frontImage) }} 
-                      style={{ width: '100%', height: 180, borderRadius: 8, marginTop: 10, resizeMode: 'contain' }} 
+                  {!!currentCard.card.frontImage && (
+                    <CardImage 
+                      uri={currentCard.card.frontImage} 
+                      fitMode={currentCard.card.frontImageFitMode} 
+                      colors={colors} 
                     />
                   )}
 
@@ -1079,10 +1041,11 @@ export default function TestScreen() {
                         </Pressable>
                       </View>
 
-                      {currentCard.card.backImage && (
-                        <Image 
-                          source={{ uri: resolveImageUri(currentCard.card.backImage) }} 
-                          style={{ width: '100%', height: 180, borderRadius: 8, marginTop: 10, resizeMode: 'contain' }} 
+                      {!!currentCard.card.backImage && (
+                        <CardImage 
+                          uri={currentCard.card.backImage} 
+                          fitMode={currentCard.card.backImageFitMode} 
+                          colors={colors} 
                         />
                       )}
                     </>
@@ -1121,10 +1084,12 @@ export default function TestScreen() {
                       <Text style={[styles.cardTitleText, isRTL(nextCard.card.front) && { textAlign: 'right' }]}>
                         {nextCard.card.front}
                       </Text>
-                      {nextCard.card.frontImage && (
-                        <Image 
-                          source={{ uri: resolveImageUri(nextCard.card.frontImage) }} 
-                          style={{ width: '100%', height: 140, borderRadius: 8, marginTop: 10, resizeMode: 'contain' }} 
+                      {!!nextCard.card.frontImage && (
+                        <CardImage 
+                          uri={nextCard.card.frontImage} 
+                          fitMode={nextCard.card.frontImageFitMode} 
+                          colors={colors} 
+                          defaultHeight={140} 
                         />
                       )}
                     </View>

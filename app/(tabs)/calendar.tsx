@@ -21,8 +21,8 @@ import {
   isRTL,
   getCardScheduledTests,
   hasReviewTarget,
-  isMonitorFolder,
-  getTodayDateStr
+  getTodayDateStr,
+  isCardStudiedOnDate,
 } from '../lib/cardsStore';
 import { shadow, TabBar, useColors, boldWeight } from '../lib/colors';
 import { useLanguage } from '../lib/languageContext';
@@ -206,6 +206,9 @@ export default function CalendarScreen() {
     for (const card of cards) {
       const scheduledItems = getCardScheduledTests(card, 3);
       for (const item of scheduledItems) {
+        if (isCardStudiedOnDate(card, item.dateKey)) {
+          continue;
+        }
         if (!groups[item.dateKey]) {
           groups[item.dateKey] = [];
         }
@@ -653,39 +656,18 @@ export default function CalendarScreen() {
           </ScrollView>
 
           {/* Test Launch FAB */}
-          {(() => {
-            const isMonitorModalFolder = selectedFolderInfo && (
-              isMonitorFolder(selectedFolderInfo.folderName) ||
-              isMonitorFolder(selectedFolderInfo.folderPath)
-            );
-            const isValidModalDate = Boolean(selectedFolderInfo?.dateStr && selectedFolderInfo.dateStr <= getTodayDateStr());
-            const isMonitorModalDisabled = Boolean(isMonitorModalFolder && !isValidModalDate);
-
-            return (
-              <Pressable
-                onPress={() => {
-                  triggerHaptic();
-                  if (isMonitorModalDisabled) {
-                    const msg = t('notTodayReviewSchedule');
-                    if (Platform.OS === 'web') {
-                      window.alert(msg);
-                    } else {
-                      Alert.alert('', msg);
-                    }
-                    return;
-                  }
-                  handleStartReviewTest();
-                }}
-                style={({ pressed }) => [
-                  styles.playFab,
-                  isMonitorModalDisabled && { backgroundColor: '#8E8E93' },
-                  pressed && { opacity: 0.8 }
-                ]}
-              >
-                <Ionicons name="play" size={32} color="white" />
-              </Pressable>
-            );
-          })()}
+          <Pressable
+            onPress={() => {
+              triggerHaptic();
+              handleStartReviewTest();
+            }}
+            style={({ pressed }) => [
+              styles.playFab,
+              pressed && { opacity: 0.8 }
+            ]}
+          >
+            <Ionicons name="play" size={32} color="white" />
+          </Pressable>
         </View>
       </Modal>
     </>

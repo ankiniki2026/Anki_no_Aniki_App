@@ -13,6 +13,7 @@ import { loadCardsData } from './lib/cardsStore';
 import { TutorialProvider } from './lib/tutorialContext';
 import { TutorialModal } from '../components/TutorialModal';
 import { checkAndApplyUpdates } from './lib/updateChecker';
+import { recordAppLaunch } from './lib/achievementsStore';
 import {
   scheduleStudyNotificationBatch,
   STUDY_NOTIFICATION_KIND,
@@ -29,6 +30,9 @@ export default function RootLayout() {
     let isActive = true;
     let handledNotificationId: string | null = null;
     const cardsReady = loadCardsData();
+
+    // 起動回数を記録
+    void recordAppLaunch();
 
     cardsReady.then(() => {
       scheduleStudyNotificationBatch();
@@ -117,11 +121,9 @@ export default function RootLayout() {
               />
 
               <Stack.Screen 
-                name="edit" 
+                name="achievements" 
                 options={{
-                  animation: 'default',
-                  animationDuration: 300,
-                  presentation: 'card',
+                  animation: 'simple_push',
                 }} 
               />
 
@@ -141,6 +143,13 @@ export default function RootLayout() {
                   animationDuration: 300,
                   presentation: 'card',
                 }}
+              />
+
+              <Stack.Screen
+                name="batchSelect"
+                options={{
+                  animation: 'simple_push',
+                }} 
               />
 
               <Stack.Screen 

@@ -266,9 +266,12 @@ export default function FunctionChart() {
       backgroundColor: 'rgba(0,0,0,0.5)',
       justifyContent: 'center',
       alignItems: 'center',
+      padding: 20,
     },
     modalContent: {
-      width: '80%',
+      width: '85%',
+      maxWidth: 420,
+      maxHeight: '75%',
       backgroundColor: colors.element,
       borderRadius: 15,
       padding: 10,
@@ -377,34 +380,48 @@ const chartWidth = Math.max(350, maxDays * DAY_WIDTH); // 画面幅より小さ�
           visible={modalVisible}
           onRequestClose={() => setModalVisible(false)}
         >
-          <Pressable 
-            style={styles.modalOverlay} 
-            onPress={() => setModalVisible(false)}
-          >
+          <View style={styles.modalOverlay}>
+            <Pressable 
+              style={StyleSheet.absoluteFill} 
+              onPress={() => setModalVisible(false)}
+            />
             <View style={styles.modalContent}>
-              {validFolders.map((item, index) => (
-                <Pressable
-                  key={item.folderName}
-                  style={[
-                    styles.modalItem,
-                    index === validFolders.length - 1 && styles.lastModalItem,
-                    index === selectedFolderIndex && { backgroundColor: colors.background + '80' }
-                  ]}
-                  onPress={() => {
-                    setSelectedFolderIndex(index);
-                    setModalVisible(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.modalItemText,
-                    index === selectedFolderIndex && { fontWeight: 'bold', color: colors.accentColor }
-                  ]}>
-                    {item.folderName}
-                  </Text>
-                </Pressable>
-              ))}
+              <ScrollView 
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+              >
+                {validFolders.length === 0 ? (
+                  <View style={{ padding: 20 }}>
+                    <Text style={[styles.modalItemText, { color: colors.plainText }]}>
+                      {t('noCardsAvailable')}
+                    </Text>
+                  </View>
+                ) : (
+                  validFolders.map((item, index) => (
+                    <Pressable
+                      key={item.folderName}
+                      style={[
+                        styles.modalItem,
+                        index === validFolders.length - 1 && styles.lastModalItem,
+                        index === selectedFolderIndex && { backgroundColor: colors.background + '80' }
+                      ]}
+                      onPress={() => {
+                        setSelectedFolderIndex(index);
+                        setModalVisible(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.modalItemText,
+                        index === selectedFolderIndex && { fontWeight: 'bold', color: colors.accentColor }
+                      ]}>
+                        {item.folderName}
+                      </Text>
+                    </Pressable>
+                  ))
+                )}
+              </ScrollView>
             </View>
-          </Pressable>
+          </View>
         </Modal>
     </ScrollView>
     </>

@@ -1,14 +1,14 @@
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, ScrollView, Keyboard, Platform, Image, Alert, Modal, Animated, Switch } from 'react-native';
-import { getCard, updateCard, deleteCard, Card, CardImageFitMode } from './lib/cardsStore';
-import { boldWeight, shadow, TabBar, useColors } from './lib/colors';
-import { triggerHaptic } from './lib/haptic';
+import { getCard, updateCard, deleteCard, Card, CardImageFitMode } from '../lib/cardsStore';
+import { boldWeight, shadow, TabBar, useColors } from '../lib/colors';
+import { triggerHaptic } from '../lib/haptic';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useLanguage } from './lib/languageContext';
-import { copyToClipboard } from './lib/clipboard';
-import { saveCardImage, resolveImageUri } from './lib/cardImageHelper';
+import { useLanguage } from '../lib/languageContext';
+import { copyToClipboard } from '../lib/clipboard';
+import { saveCardImage, resolveImageUri } from '../lib/cardImageHelper';
 
 export default function EditCardScreen() {
   const { t } = useLanguage();
@@ -31,7 +31,6 @@ export default function EditCardScreen() {
   const [showJsonModal, setShowJsonModal] = useState(false);
 
   const colors = useColors();
-  const isMonitorCard = Boolean(params.folderPath && JSON.parse(params.folderPath as string)[0] === 'MONITOR');
 
   const frontInputRef = useRef<TextInput>(null);
   const backInputRef = useRef<TextInput>(null);
@@ -163,7 +162,6 @@ export default function EditCardScreen() {
   };
 
   const handlePickImage = async (target: 'front' | 'back') => {
-    if (isMonitorCard) return;
     triggerHaptic();
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
@@ -195,16 +193,16 @@ export default function EditCardScreen() {
 
     const updatedCard: Card = {
       ...originalCard,
-      front: isMonitorCard ? originalCard.front : front,
-      back: isMonitorCard ? originalCard.back : back,
+      front,
+      back,
       memo,
-      frontImage: isMonitorCard ? originalCard.frontImage : frontImage,
-      backImage: isMonitorCard ? originalCard.backImage : backImage,
-      frontImageFitMode: isMonitorCard ? originalCard.frontImageFitMode : frontImageFitMode,
-      backImageFitMode: isMonitorCard ? originalCard.backImageFitMode : backImageFitMode,
-      frontAscii: isMonitorCard ? originalCard.frontAscii : frontAscii,
-      backAscii: isMonitorCard ? originalCard.backAscii : backAscii,
-      memoAscii: isMonitorCard ? originalCard.memoAscii : memoAscii,
+      frontImage,
+      backImage,
+      frontImageFitMode,
+      backImageFitMode,
+      frontAscii,
+      backAscii,
+      memoAscii,
       createdAt: originalCard.createdAt,
       lastEdited: new Date().toISOString(),
       memorizationLevel: originalCard.memorizationLevel,
@@ -217,7 +215,6 @@ export default function EditCardScreen() {
   };
 
   const handleDelete = () => {
-    if (isMonitorCard) return;
     triggerHaptic();
     const folderPath = params.folderPath ? JSON.parse(params.folderPath as string) as string[] : [];
     const cardIndex = params.cardIndex ? parseInt(params.cardIndex as string, 10) : -1;
@@ -323,6 +320,34 @@ export default function EditCardScreen() {
       fontSize: 32,
       color: "white",
       textAlign: "center",
+    },
+    screenWrapper: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    topTabBar: {
+      height: 48,
+      backgroundColor: colors.element,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 15,
+      ...shadow,
+      zIndex: 10,
+    },
+    headerBackButton: {
+      position: 'absolute',
+      left: 15,
+      width: 36,
+      height: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    headerTitle: {
+      fontSize: 16,
+      fontWeight: boldWeight,
+      color: colors.titleText,
+      textAlign: 'center',
     },
     container: {
       flex: 1,
@@ -567,37 +592,64 @@ export default function EditCardScreen() {
 
   if (!isValidCard) {
     return (
-      <View style={styles.container}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.errorText}>{t('cardNotFound')}</Text>
-        <Pressable style={styles.cancelButton} onPress={handleCancel}>
-          <Text style={styles.cancelButtonText}>{t('backButton')}</Text>
-        </Pressable>
+      <View style={styles.screenWrapper}>
+        <TabBar />
+        <View style={styles.topTabBar}>
+          <Pressable
+            onPress={handleCancel}
+            style={styles.headerBackButton}
+            accessibilityLabel={t('backButton')}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.plainText} />
+          </Pressable>
+          <Text style={styles.headerTitle}>{t('editCard')}</Text>
+        </View>
+        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={styles.errorText}>{t('cardNotFound')}</Text>
+          <Pressable style={styles.cancelButton} onPress={handleCancel}>
+            <Text style={styles.cancelButtonText}>{t('backButton')}</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
 
   return (
-    <>
-      <Stack.Screen options={{ headerShown: false }} />
-      <TabBar/>
+    <View style={styles.screenWrapper}>
+      {/* ダイナミックアイランド用領域 */}
+      <TabBar />
 
-      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-        {isMonitorCard && (
-          <View style={styles.noticeContainer}>
-            <Text style={styles.noticeText}>{t('monitorCardReadOnlyNotice')}</Text>
-          </View>
-        )}
+      {/* 上のタブバー（ヘッダー） */}
+      <View style={styles.topTabBar}>
+        <Pressable
+          onPress={handleCancel}
+          style={styles.headerBackButton}
+          accessibilityLabel={t('backButton')}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.plainText} />
+        </Pressable>
+        <Text 
+          style={styles.headerTitle}
+          numberOfLines={1}
+          ellipsizeMode="middle"
+        >
+          {t('editCard')}
+        </Text>
+      </View>
 
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: 60 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <View style={styles.field}>
           <Text style={styles.label}>{t('front')}</Text>
           <TextInput
             ref={frontInputRef}
-            style={[styles.input, isMonitorCard && styles.disabledInput]}
+            style={styles.input}
             value={front}
             multiline
-            editable={!isMonitorCard}
-            autoFocus={!isMonitorCard}
             keyboardType={frontAscii ? (Platform.OS === 'ios' ? 'ascii-capable' : 'email-address') : 'default'}
             onFocus={() => handleFieldFocus('front')}
             onBlur={handleFieldBlur}
@@ -605,113 +657,108 @@ export default function EditCardScreen() {
             onChangeText={setFront}
             placeholder={t('englishWordPlaceholder')}
           />
-          {!isMonitorCard && (
-            <View style={styles.fieldControlsRow}>
-              {frontImage ? (
-                <View style={{ flex: 1 }}>
-                  <View style={styles.imagePreviewContainer}>
-                    <Image source={{ uri: resolveImageUri(frontImage) }} style={styles.imagePreview} />
-                    <Pressable style={styles.imageRemoveButton} onPress={() => setFrontImage(undefined)}>
-                      <Ionicons name="close-circle" size={24} color="#ff4444" />
-                    </Pressable>
-                  </View>
-                  <View style={styles.modeToggleContainer}>
-                    <Pressable 
-                      style={[styles.modeToggleButton, frontImageFitMode === 'contain' && styles.modeToggleButtonActive]} 
-                      onPress={() => { triggerHaptic(); setFrontImageFitMode('contain'); }}
-                    >
-                      <Text style={[styles.modeToggleText, frontImageFitMode === 'contain' && styles.modeToggleTextActive]}>
-                        {t('imageFitContain')}
-                      </Text>
-                    </Pressable>
-                    <Pressable 
-                      style={[styles.modeToggleButton, frontImageFitMode === 'fullWidth' && styles.modeToggleButtonActive]} 
-                      onPress={() => { triggerHaptic(); setFrontImageFitMode('fullWidth'); }}
-                    >
-                      <Text style={[styles.modeToggleText, frontImageFitMode === 'fullWidth' && styles.modeToggleTextActive]}>
-                        {t('imageFitFullWidth')}
-                      </Text>
-                    </Pressable>
-                  </View>
+          <View style={styles.fieldControlsRow}>
+            {frontImage ? (
+              <View style={{ flex: 1 }}>
+                <View style={styles.imagePreviewContainer}>
+                  <Image source={{ uri: resolveImageUri(frontImage) }} style={styles.imagePreview} />
+                  <Pressable style={styles.imageRemoveButton} onPress={() => setFrontImage(undefined)}>
+                    <Ionicons name="close-circle" size={24} color="#ff4444" />
+                  </Pressable>
                 </View>
-              ) : (
-                <Pressable style={styles.addImageButton} onPress={() => handlePickImage('front')}>
-                  <Ionicons name="image-outline" size={20} color={colors.accentColor} />
-                  <Text style={styles.addImageButtonText}>{t('addImageFront')}</Text>
-                </Pressable>
-              )}
-              <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>{t('asciiOnly')}</Text>
-                <Switch
-                  value={frontAscii}
-                  onValueChange={(val) => { triggerHaptic(); setFrontAscii(val); }}
-                  trackColor={{ false: '#767577', true: colors.accentColor }}
-                  thumbColor="#f4f3f4"
-                />
+                <View style={styles.modeToggleContainer}>
+                  <Pressable 
+                    style={[styles.modeToggleButton, frontImageFitMode === 'contain' && styles.modeToggleButtonActive]} 
+                    onPress={() => { triggerHaptic(); setFrontImageFitMode('contain'); }}
+                  >
+                    <Text style={[styles.modeToggleText, frontImageFitMode === 'contain' && styles.modeToggleTextActive]}>
+                      {t('imageFitContain')}
+                    </Text>
+                  </Pressable>
+                  <Pressable 
+                    style={[styles.modeToggleButton, frontImageFitMode === 'fullWidth' && styles.modeToggleButtonActive]} 
+                    onPress={() => { triggerHaptic(); setFrontImageFitMode('fullWidth'); }}
+                  >
+                    <Text style={[styles.modeToggleText, frontImageFitMode === 'fullWidth' && styles.modeToggleTextActive]}>
+                      {t('imageFitFullWidth')}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
+            ) : (
+              <Pressable style={styles.addImageButton} onPress={() => handlePickImage('front')}>
+                <Ionicons name="image-outline" size={20} color={colors.accentColor} />
+                <Text style={styles.addImageButtonText}>{t('addImageFront')}</Text>
+              </Pressable>
+            )}
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>{t('asciiOnly')}</Text>
+              <Switch
+                value={frontAscii}
+                onValueChange={(val) => { triggerHaptic(); setFrontAscii(val); }}
+                trackColor={{ false: '#767577', true: colors.accentColor }}
+                thumbColor="#f4f3f4"
+              />
             </View>
-          )}
+          </View>
         </View>
         <View style={styles.field}>
           <Text style={styles.label}>{t('back')}</Text>
           <TextInput
             ref={backInputRef}
-            style={[styles.input, isMonitorCard && styles.disabledInput]}
+            style={styles.input}
             value={back}
             multiline
-            editable={!isMonitorCard}
             keyboardType={backAscii ? (Platform.OS === 'ios' ? 'ascii-capable' : 'email-address') : 'default'}
             onFocus={() => handleFieldFocus('back')}
             onBlur={handleFieldBlur}
             selectionColor={colors.accentColor}
             onChangeText={setBack}
           />
-          {!isMonitorCard && (
-            <View style={styles.fieldControlsRow}>
-              {backImage ? (
-                <View style={{ flex: 1 }}>
-                  <View style={styles.imagePreviewContainer}>
-                    <Image source={{ uri: resolveImageUri(backImage) }} style={styles.imagePreview} />
-                    <Pressable style={styles.imageRemoveButton} onPress={() => setBackImage(undefined)}>
-                      <Ionicons name="close-circle" size={24} color="#ff4444" />
-                    </Pressable>
-                  </View>
-                  <View style={styles.modeToggleContainer}>
-                    <Pressable 
-                      style={[styles.modeToggleButton, backImageFitMode === 'contain' && styles.modeToggleButtonActive]} 
-                      onPress={() => { triggerHaptic(); setBackImageFitMode('contain'); }}
-                    >
-                      <Text style={[styles.modeToggleText, backImageFitMode === 'contain' && styles.modeToggleTextActive]}>
-                        {t('imageFitContain')}
-                      </Text>
-                    </Pressable>
-                    <Pressable 
-                      style={[styles.modeToggleButton, backImageFitMode === 'fullWidth' && styles.modeToggleButtonActive]} 
-                      onPress={() => { triggerHaptic(); setBackImageFitMode('fullWidth'); }}
-                    >
-                      <Text style={[styles.modeToggleText, backImageFitMode === 'fullWidth' && styles.modeToggleTextActive]}>
-                        {t('imageFitFullWidth')}
-                      </Text>
-                    </Pressable>
-                  </View>
+          <View style={styles.fieldControlsRow}>
+            {backImage ? (
+              <View style={{ flex: 1 }}>
+                <View style={styles.imagePreviewContainer}>
+                  <Image source={{ uri: resolveImageUri(backImage) }} style={styles.imagePreview} />
+                  <Pressable style={styles.imageRemoveButton} onPress={() => setBackImage(undefined)}>
+                    <Ionicons name="close-circle" size={24} color="#ff4444" />
+                  </Pressable>
                 </View>
-              ) : (
-                <Pressable style={styles.addImageButton} onPress={() => handlePickImage('back')}>
-                  <Ionicons name="image-outline" size={20} color={colors.accentColor} />
-                  <Text style={styles.addImageButtonText}>{t('addImageBack')}</Text>
-                </Pressable>
-              )}
-              <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>{t('asciiOnly')}</Text>
-                <Switch
-                  value={backAscii}
-                  onValueChange={(val) => { triggerHaptic(); setBackAscii(val); }}
-                  trackColor={{ false: '#767577', true: colors.accentColor }}
-                  thumbColor="#f4f3f4"
-                />
+                <View style={styles.modeToggleContainer}>
+                  <Pressable 
+                    style={[styles.modeToggleButton, backImageFitMode === 'contain' && styles.modeToggleButtonActive]} 
+                    onPress={() => { triggerHaptic(); setBackImageFitMode('contain'); }}
+                  >
+                    <Text style={[styles.modeToggleText, backImageFitMode === 'contain' && styles.modeToggleTextActive]}>
+                      {t('imageFitContain')}
+                    </Text>
+                  </Pressable>
+                  <Pressable 
+                    style={[styles.modeToggleButton, backImageFitMode === 'fullWidth' && styles.modeToggleButtonActive]} 
+                    onPress={() => { triggerHaptic(); setBackImageFitMode('fullWidth'); }}
+                  >
+                    <Text style={[styles.modeToggleText, backImageFitMode === 'fullWidth' && styles.modeToggleTextActive]}>
+                      {t('imageFitFullWidth')}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
+            ) : (
+              <Pressable style={styles.addImageButton} onPress={() => handlePickImage('back')}>
+                <Ionicons name="image-outline" size={20} color={colors.accentColor} />
+                <Text style={styles.addImageButtonText}>{t('addImageBack')}</Text>
+              </Pressable>
+            )}
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>{t('asciiOnly')}</Text>
+              <Switch
+                value={backAscii}
+                onValueChange={(val) => { triggerHaptic(); setBackAscii(val); }}
+                trackColor={{ false: '#767577', true: colors.accentColor }}
+                thumbColor="#f4f3f4"
+              />
             </View>
-          )}
+          </View>
         </View>
         <View style={styles.field}>
           <Text style={styles.label}>{t('memo')}</Text>
@@ -727,27 +774,24 @@ export default function EditCardScreen() {
             multiline
             keyboardType={memoAscii ? (Platform.OS === 'ios' ? 'ascii-capable' : 'email-address') : 'default'}
           />
-          {!isMonitorCard && (
-            <View style={[styles.fieldControlsRow, { justifyContent: 'flex-end' }]}>
-              <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>{t('asciiOnly')}</Text>
-                <Switch
-                  value={memoAscii}
-                  onValueChange={(val) => { triggerHaptic(); setMemoAscii(val); }}
-                  trackColor={{ false: '#767577', true: colors.accentColor }}
-                  thumbColor="#f4f3f4"
-                />
-              </View>
+          <View style={[styles.fieldControlsRow, { justifyContent: 'flex-end' }]}>
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>{t('asciiOnly')}</Text>
+              <Switch
+                value={memoAscii}
+                onValueChange={(val) => { triggerHaptic(); setMemoAscii(val); }}
+                trackColor={{ false: '#767577', true: colors.accentColor }}
+                thumbColor="#f4f3f4"
+              />
             </View>
-          )}
+          </View>
         </View>
         <View style={styles.buttonRow}>
           <Pressable 
-            style={[styles.deleteIconButton, isMonitorCard && styles.disabledButton]} 
+            style={styles.deleteIconButton} 
             onPress={handleDelete}
-            disabled={isMonitorCard}
           >
-            <Ionicons name="trash-outline" size={24} color={isMonitorCard ? colors.plainText : colors.danger} />
+            <Ionicons name="trash-outline" size={24} color={colors.danger} />
           </Pressable>
           <Pressable style={styles.infoIconButton} onPress={() => { triggerHaptic(); setShowJsonModal(true); }}>
             <Ionicons name="code-slash-outline" size={22} color={colors.plainText} />
@@ -832,6 +876,6 @@ export default function EditCardScreen() {
           </View>
         </Animated.View>
       )}
-    </>
+    </View>
   );
 }
