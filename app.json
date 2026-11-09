@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "43b8c45a-f782-4881-ae03-abc176b9fe28"
+      }
+    },
+    "android": {
+      "package": "com.kurashima_kaito.wordapp"
+    }
+  }
+}
